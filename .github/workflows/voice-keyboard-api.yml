@@ -72,9 +72,10 @@ jobs:
         run: |
           APK="vk/app/build/outputs/apk/debug/VoiceKeyboard.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -E '^package:|^application-label:'
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -F "com.tyraen.voicekeyboard.api"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -F "语音输入API"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" > badging.txt 2> badging-warnings.txt || true
+          grep -E '^package:|^application-label:' badging.txt
+          grep -F "com.tyraen.voicekeyboard.api" badging.txt
+          grep -F "语音输入API" badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "$APK"
       - name: Unit tests
         working-directory: vk
