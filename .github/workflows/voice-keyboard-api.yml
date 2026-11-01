@@ -22,9 +22,9 @@ jobs:
       - name: Verify SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          which sdkmanager
+          ls "$ANDROID_HOME/cmdline-tools"\n          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
       - name: Install Android platform
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
       - name: Fetch pinned upstream release
         run: git clone --depth=1 --branch v1.12.0 https://github.com/rustemar/voice-keyboard.git vk
       - name: Build separately installable keyboard variant
