@@ -1,0 +1,85 @@
+name: Voice Keyboard API isolated test APK
+
+on:
+  push:
+    branches:
+      - build/voice-keyboard-api-20261031
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Fetch pinned upstream release
+        run: git clone --depth=1 --branch v1.12.0 https://github.com/rustemar/voice-keyboard.git vk
+      - name: Build separately installable keyboard variant
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path("vk/app")
+          gradle = root / "build.gradle.kts"
+          src = gradle.read_text()
+          old = 'applicationId = "com.tyraen.voicekeyboard"'
+          assert src.count(old) == 1, "Application ID changed upstream"
+          src = src.replace(old, 'applicationId = "com.tyraen.voicekeyboard.api"')
+          old = 'versionName = "1.12.0"'
+          assert src.count(old) == 1, "Version changed upstream"
+          src = src.replace(old, 'versionName = "1.12.0-api-test1"')
+          gradle.write_text(src)
+          method = root / "src/main/res/xml/method.xml"
+          src = method.read_text()
+          assert src.count('android:imeSubtypeMode="voice"') == 1
+          method.write_text(src.replace('android:imeSubtypeMode="voice"', 'android:imeSubtypeMode="keyboard"'))
+          names = ("app_name", "subtype_label", "settings_title")
+          for path in (root / "src/main/res").glob("values*/strings.xml"):
+              src = path.read_text()
+              for name in names:
+                  pattern = r'(<string\s+name="' + name + r'"[^>]*>).*?(</string>)'
+                  src = re.sub(pattern, lambda m: m.group(1) + "语音输入API" + m.group(2), src, flags=re.S)
+              path.write_text(src)
+          strings = (root / "src/main/res/values/strings.xml").read_text()
+          assert "语音输入API" in strings
+          assert 'applicationId = "com.tyraen.voicekeyboard.api"' in gradle.read_text()
+          assert 'imeSubtypeMode="keyboard"' in method.read_text()
+          print("Patched variant: package com.tyraen.voicekeyboard.api; label 语音输入API; keyboard subtype")
+          PY
+      - name: Build debug APK
+        working-directory: vk
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Check install package, label and APK signature
+        shell: bash
+        run: |
+          APK="vk/app/build/outputs/apk/debug/VoiceKeyboard.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -E '^package:|^application-label:'
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -F "com.tyraen.voicekeyboard.api"
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | grep -F "语音输入API"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose "$APK"
+      - name: Unit tests
+        working-directory: vk
+        continue-on-error: true
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+      - name: Upload signed debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceKeyboard-API-APK
+          path: vk/app/build/outputs/apk/debug/VoiceKeyboard.apk
+          if-no-files-found: error
+          retention-days: 7
